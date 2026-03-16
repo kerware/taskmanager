@@ -1,0 +1,178 @@
+name: CI — TaskManager
+
+# ── Déclencheurs ──────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# ── Variables globales ────────────────────────────────────────────────────────
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '20'
+
+jobs:
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Job 1 — Tests Backend (unitaires + intégration JPA + tests API)
+  # ════════════════════════════════════════════════════════════════════════════
+  test-backend:
+    name: 🧪 Tests Backend
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      # Cache des dépendances Maven — clé basée sur pom.xml
+      - name: Cache Maven (~/.m2)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # mvn verify = compile + test (Surefire) + package + verify (Failsafe *IT)
+      - name: Build et Tests (mvn verify)
+        working-directory: backend
+        run: mvn verify --no-transfer-progress
+
+      # Upload du rapport Surefire même si les tests échouent
+      - name: Upload rapport tests unitaires (Surefire)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: surefire-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+      # Upload du rapport Failsafe (tests API *IT.java)
+      - name: Upload rapport tests API (Failsafe)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: failsafe-reports
+          path: backend/target/failsafe-reports/
+          retention-days: 7
+
+      # Upload du rapport de couverture JaCoCo
+      - name: Upload rapport couverture JaCoCo
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/
+          retention-days: 7
+
+      # Notification en cas d'échec
+      - name: Notification d'échec
+        if: failure()
+        run: |
+          echo "❌ Les tests backend ont échoué !"
+          echo "  Branche  : ${{ github.ref_name }}"
+          echo "  Commit   : ${{ github.sha }}"
+          echo "  Auteur   : ${{ github.actor }}"
+          echo "  Pipeline : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Job 2 — Tests Frontend (parallèle avec Job 1)
+  # ════════════════════════════════════════════════════════════════════════════
+  test-frontend:
+    name: ⚛️ Tests Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installation des dépendances (npm ci)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Tests Vitest
+        working-directory: frontend
+        run: npm test
+
+      - name: Build de production
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload du bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Job 3 — Déploiement Staging (seulement sur main, après les 2 jobs)
+  # ════════════════════════════════════════════════════════════════════════════
+  deploy-staging:
+    name: 🚀 Deploy Staging
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+
+    steps:
+
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+
+      - name: Build JAR de production
+        working-directory: backend
+        run: mvn package -DskipTests --no-transfer-progress
+
+      - name: Téléchargement du bundle frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+      # Déploiement réel (décommenter et adapter selon votre infrastructure)
+      # - name: Déploiement via SSH
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host:     ${{ secrets.STAGING_HOST }}
+      #     username: ${{ secrets.STAGING_USER }}
+      #     key:      ${{ secrets.STAGING_SSH_KEY }}
+      #     script: |
+      #       cd /opt/taskmanager
+      #       cp taskmanager-*.jar taskmanager-staging.jar
+      #       systemctl restart taskmanager-staging
+
+      - name: Simulation déploiement staging
+        run: |
+          echo "✅ Déploiement staging simulé avec succès"
+          echo "  Artefact : backend/target/taskmanager-*.jar"
+          echo "  Commit   : ${{ github.sha }}"
+          echo "  Version  : ${{ github.ref_name }}-${{ github.run_number }}"

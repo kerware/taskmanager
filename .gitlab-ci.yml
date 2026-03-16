@@ -1,0 +1,141 @@
+# ── GitLab CI — TaskManager ───────────────────────────────────────────────────
+# Image Java 21 par défaut pour tous les jobs backend
+image: eclipse-temurin:21-jdk-alpine
+
+# ── Stages dans l'ordre d'exécution ──────────────────────────────────────────
+stages:
+  - build
+  - test
+  - deploy
+
+# ── Bloc YAML réutilisable : cache Maven ─────────────────────────────────────
+.maven-cache: &maven-cache
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}-maven"
+    paths:
+      - backend/.m2/repository
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=${CI_PROJECT_DIR}/backend/.m2/repository"
+
+# ── Bloc YAML réutilisable : cache npm ───────────────────────────────────────
+.npm-cache: &npm-cache
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}-npm"
+    paths:
+      - frontend/node_modules/
+
+# ════════════════════════════════════════════════════════════════════════════
+# Stage 1 : BUILD
+# ════════════════════════════════════════════════════════════════════════════
+
+build-backend:
+  stage: build
+  <<: *maven-cache
+  script:
+    - cd backend
+    - mvn package -DskipTests --no-transfer-progress
+  artifacts:
+    name: "taskmanager-backend-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - backend/target/*.jar
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - merge_requests
+
+build-frontend:
+  stage: build
+  image: node:20-alpine
+  <<: *npm-cache
+  script:
+    - cd frontend
+    - npm ci
+    - npm run build
+  artifacts:
+    name: "taskmanager-frontend-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - frontend/dist/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# ════════════════════════════════════════════════════════════════════════════
+# Stage 2 : TEST (parallèle — même stage = exécution simultanée)
+# ════════════════════════════════════════════════════════════════════════════
+
+test-backend:
+  stage: test
+  <<: *maven-cache
+  script:
+    - cd backend
+    - mvn verify --no-transfer-progress
+  artifacts:
+    when: always   # Conserver les rapports même si les tests échouent
+    reports:
+      junit:
+        - backend/target/surefire-reports/*.xml
+        - backend/target/failsafe-reports/*.xml
+    paths:
+      - backend/target/site/jacoco/
+    expire_in: 7 days
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  only:
+    - main
+    - develop
+    - merge_requests
+
+test-frontend:
+  stage: test
+  image: node:20-alpine
+  <<: *npm-cache
+  script:
+    - cd frontend
+    - npm ci
+    - npm test
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# ════════════════════════════════════════════════════════════════════════════
+# Stage 3 : DEPLOY
+# ════════════════════════════════════════════════════════════════════════════
+
+deploy-staging:
+  stage: deploy
+  needs:
+    - build-backend
+    - build-frontend
+    - test-backend
+    - test-frontend
+  environment:
+    name: staging
+    url: http://staging.taskmanager.example.com
+  script:
+    # Décommenter pour un vrai déploiement SSH :
+    # - apk add --no-cache openssh-client
+    # - eval $(ssh-agent -s)
+    # - echo "$STAGING_SSH_KEY" | ssh-add -
+    # - scp backend/target/*.jar $STAGING_USER@$STAGING_HOST:/opt/taskmanager/
+    # - ssh $STAGING_USER@$STAGING_HOST "systemctl restart taskmanager"
+    - echo "✅ Déploiement staging simulé — commit ${CI_COMMIT_SHORT_SHA}"
+    - echo "   Branche  ${CI_COMMIT_BRANCH}"
+    - echo "   Auteur   ${CI_COMMIT_AUTHOR}"
+  only:
+    - main
+
+deploy-prod:
+  stage: deploy
+  needs:
+    - deploy-staging
+  environment:
+    name: production
+    url: http://taskmanager.example.com
+  script:
+    - echo "🚀 Déploiement production — commit ${CI_COMMIT_SHORT_SHA}"
+  when: manual   # Déploiement production : approbation manuelle obligatoire
+  only:
+    - main
