@@ -40,7 +40,7 @@ build-backend:
       - backend/target/*.jar
     expire_in: 1 hour
   only:
-    - main
+    - master
     - develop
     - merge_requests
 
@@ -58,7 +58,7 @@ build-frontend:
       - frontend/dist/
     expire_in: 1 hour
   only:
-    - main
+    - master
     - develop
     - merge_requests
 
@@ -83,7 +83,7 @@ test-backend:
     expire_in: 7 days
   coverage: '/Total.*?([0-9]{1,3})%/'
   only:
-    - main
+    - master
     - develop
     - merge_requests
 
@@ -96,7 +96,7 @@ test-frontend:
     - npm ci
     - npm test
   only:
-    - main
+    - master
     - develop
     - merge_requests
 
@@ -125,7 +125,7 @@ deploy-staging:
     - echo "   Branche  ${CI_COMMIT_BRANCH}"
     - echo "   Auteur   ${CI_COMMIT_AUTHOR}"
   only:
-    - main
+    - master
 
 deploy-prod:
   stage: deploy
@@ -138,4 +138,4 @@ deploy-prod:
     - echo "🚀 Déploiement production — commit ${CI_COMMIT_SHORT_SHA}"
   when: manual   # Déploiement production : approbation manuelle obligatoire
   only:
-    - main
+    - master
