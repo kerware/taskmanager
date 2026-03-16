@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.junit.jupiter.api.TestInfo;
 
 import java.util.List;
 
@@ -33,8 +34,12 @@ class TaskRepositoryTest {
     @Autowired
     TestEntityManager em; // Utile pour insérer des données de test sans passer par le service
 
+
+
+
     @BeforeEach
     void setUp() {
+        repository.deleteAll();
         // TestEntityManager assure que les entités sont persistées et flushées
         em.persist(new Task("Configurer CI",       "Pipeline GitHub Actions", Task.Status.TODO));
         em.persist(new Task("Écrire les tests",    "JUnit 5 + Mockito",       Task.Status.IN_PROGRESS));
@@ -132,6 +137,9 @@ class TaskRepositoryTest {
     @Nested
     @DisplayName("countByStatus()")
     class CountByStatus {
+
+
+
 
         @Test
         @DisplayName("compte correctement les tâches TODO")
