@@ -14,13 +14,14 @@ import static io.restassured.RestAssured.*;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Tests d'integration API — bout en bout.
+ * Tests d'integration API — bout en bout. Integration
  *
  * @SpringBootTest demarre le contexte complet sur un port aleatoire.
  * @TestPropertySource charge application-test.properties (H2 create-drop, pas de data.sql)
  * pour garantir un etat propre a chaque run.
  *
  * Commande : mvn verify  (Failsafe execute les classes *IT.java)
+ *
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(locations = "classpath:application-test.properties")
