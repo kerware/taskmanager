@@ -1,0 +1,84 @@
+name: CI — TaskManager
+
+# ── Déclencheurs ──────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# ── Variables globales ────────────────────────────────────────────────────────
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '20'
+
+jobs:
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Job 1 — Tests Backend (unitaires + intégration JPA + tests API)
+  # ════════════════════════════════════════════════════════════════════════════
+  test-backend:
+    name: Tests Backend
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      # Cache des dépendances Maven — clé basée sur pom.xml
+      - name: Cache Maven (~/.m2)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # mvn verify = compile + test (Surefire) + package + verify (Failsafe *IT)
+      - name: Build et Tests (mvn verify)
+        working-directory: backend
+        run: mvn verify --no-transfer-progress
+
+      # Upload du rapport Surefire même si les tests échouent
+      - name: Upload rapport tests unitaires (Surefire)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: surefire-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+      # Upload du rapport Failsafe (tests API *IT.java)
+      - name: Upload rapport tests API (Failsafe)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: failsafe-reports
+          path: backend/target/failsafe-reports/
+          retention-days: 7
+
+      # Upload du rapport de couverture JaCoCo
+      - name: Upload rapport couverture JaCoCo
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/
+          retention-days: 7
+
+      # Notification en cas d'échec
+      - name: Notification d'échec
+        if: failure()
+        run: |
+          echo "❌ Les tests backend ont échoué !"
+          echo "  Branche  : ${{ github.ref_name }}"
+          echo "  Commit   : ${{ github.sha }}"
+          echo "  Auteur   : ${{ github.actor }}"
+          echo "  Pipeline : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
